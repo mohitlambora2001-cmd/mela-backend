@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Mela Chat</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    :root {
+      --bg-dark: #0f172a;
+      --bg-panel: #1e293b;
+      --primary: #3b82f6;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --border: #334155;
+      --msg-them: #334155;
+      --msg-me: #2563eb;
+    }
+    
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; background: var(--bg-dark); color: var(--text-main); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+    #login-screen { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.95); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; backdrop-filter: blur(10px); }
+    #login-box { background: var(--bg-panel); padding: 40px; border-radius: 20px; text-align: center; border: 1px solid var(--border); width: 80%; max-width: 350px; }
+    #login-box h2 { margin-top: 0; margin-bottom: 20px; }
+    
+    .login-input { width: 100%; box-sizing: border-box; background: var(--bg-dark); border: 2px solid var(--border); color: white; padding: 15px; border-radius: 12px; font-size: 1rem; margin-bottom: 15px; }
+    .login-input:focus { outline: none; border-color: var(--primary); }
+    
+    #login-btn { width: 100%; padding: 15px; background: var(--primary); color: white; border: none; border-radius: 12px; font-size: 1rem; font-weight: bold; cursor: pointer; margin-top: 10px; }
+
+    #chat-wrapper { display: none; flex-direction: column; height: 100%; width: 100%; max-width: 800px; margin: 0 auto; background: var(--bg-dark); }
+    
+    header { background: var(--bg-panel); padding: 15px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+    .header-title { font-weight: bold; font-size: 1.2rem; }
+    .status-dot { width: 10px; height: 10px; background: #22c55e; border-radius: 50%; box-shadow: 0 0 10px #22c55e; }
+
+    #active-users-bar { background: #182235; padding: 8px 20px; font-size: 0.8rem; color: var(--primary); border-bottom: 1px solid var(--border); font-weight: 500; white-space: nowrap; overflow-x: auto; scrollbar-width: none; }
+
+    #chat-box { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+    
+    .msg-group { display: flex; flex-direction: column; max-width: 85%; }
+    .msg-group.me { align-self: flex-end; align-items: flex-end; }
+    .msg-group.them { align-self: flex-start; align-items: flex-start; }
+    
+    .meta { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px; margin-top: 10px; }
+    
+    .msg { padding: 10px 16px; border-radius: 18px; font-size: 0.95rem; line-height: 1.4; word-wrap: break-word; }
+    .them .msg { background: var(--msg-them); border-bottom-left-radius: 4px; color: white; }
+    .me .msg { background: var(--msg-me); border-bottom-right-radius: 4px; color: white; }
+    
+    .msg img { max-width: 100%; border-radius: 12px; margin-top: 5px; cursor: pointer; }
+    
+    /* NEW: Audio player styling */
+    .msg audio { height: 40px; max-width: 220px; border-radius: 20px; margin-top: 5px; outline: none; }
+    audio::-webkit-media-controls-panel { background-color: #f1f5f9; }
+    
+    .sys-msg { align-self: center; background: rgba(51, 65, 85, 0.5); color: var(--text-muted); padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; margin: 15px 0; }
+
+    #typing-container { padding: 0 20px; height: 20px; display: flex; align-items: center; }
+    #typing-indicator { color: var(--text-muted); font-size: 0.8rem; font-style: italic; }
+    
+    #input-area { background: var(--bg-panel); padding: 15px 20px; border-top: 1px solid var(--border); display: flex; gap: 8px; align-items: center; }
+    
+    .icon-btn { background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 8px; display: flex; transition: color 0.2s; }
+    .icon-btn:hover { color: white; }
+    .icon-btn svg { width: 22px; height: 22px; fill: currentColor; }
+    
+    /* NEW: Microphone recording animation */
+    #mic-btn.recording { color: #ef4444; animation: pulse 1s infinite; }
+    @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.2); } 100% { transform: scale(1); } }
+    
+    #message-input { flex: 1; background: var(--bg-dark); border: 1px solid var(--border); color: white; padding: 12px 15px; border-radius: 24px; font-size: 1rem; width: 100%; }
+    #send-btn { background: var(--primary); color: white; border: none; border-radius: 50%; min-width: 44px; height: 44px; display: flex; justify-content: center; align-items: center; cursor: pointer; }
+    #send-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; margin-left: -2px;}
+  </style>
+</head>
+<body>
+
+  <div id="login-screen">
+    <div id="login-box">
+      <h2>Mela Hub</h2>
+      <input type="text" id="join-name" class="login-input" placeholder="Enter your name" autocomplete="off">
+      <input type="text" id="join-room" class="login-input" placeholder="Secret Room Code" autocomplete="off">
+      <button id="login-btn" onclick="joinChat()">Join Secure Room</button>
+    </div>
+  </div>
+
+  <div id="chat-wrapper">
+    <header>
+      <div class="status-dot"></div>
+      <div class="header-title" id="room-title">Mela Live Hub</div>
+    </header>
+    
+    <div id="active-users-bar">👥 Online: ...</div>
+    
+    <div id="chat-box"></div>
+    
+    <div id="typing-container">
+      <div id="typing-indicator"></div>
+    </div>
+    
+    <div id="input-area">
+      <input type="file" id="image-input" accept="image/*" style="display: none;">
+      
+      <button class="icon-btn" onclick="document.getElementById('image-input').click()">
+        <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+      </button>
+      
+      <button class="icon-btn" id="mic-btn" onclick="toggleRecording()">
+        <svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 003-3V6a3 3 0 00-6 0v5a3 3 0 003 3zm5-3a5 5 0 01-10 0H5a7 7 0 0014 0h-2zM8 21h8m-4-4v4"/></svg>
+      </button>
+      
+      <input type="text" id="message-input" placeholder="Message..." autocomplete="off">
+      <button id="send-btn" onclick="sendMessage()">
+        <svg viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+    const loginScreen = document.getElementById('login-screen');
+    const chatWrapper = document.getElementById('chat-wrapper');
+    const chatBox = document.getElementById('chat-box');
+    const messageInput = document.getElementById('message-input');
+    const imageInput = document.getElementById('image-input');
+    const joinNameInput = document.getElementById('join-name');
+    const joinRoomInput = document.getElementById('join-room');
+    const roomTitle = document.getElementById('room-title');
+    const activeUsersBar = document.getElementById('active-users-bar');
+    const typingIndicator = document.getElementById('typing-indicator');
+    const micBtn = document.getElementById('mic-btn');
+    
+    let myName = "";
+    let lastSender = "";
+    let typingTimer;
+    
+    // Audio Recording Variables
+    let mediaRecorder;
+    let audioChunks = [];
+    let isRecording = false;
+
+    function joinChat() {
+      myName = joinNameInput.value.trim() || "Anonymous";
+      const myRoom = joinRoomInput.value.trim() || "Global";
+      loginScreen.style.display = 'none';
+      chatWrapper.style.display = 'flex';
+      roomTitle.innerText = `Mela Hub - ${myRoom}`;
+      socket.emit('join', { username: myName, room: myRoom });
+    }
+
+    joinRoomInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') joinChat(); });
+
+    socket.on('receive_message', (msg) => appendMessage(msg.user, msg.text, msg.time, 'text'));
+    socket.on('receive_image', (msg) => appendMessage(msg.user, msg.image, msg.time, 'image'));
+    
+    // NEW: Listen for Voice Notes
+    socket.on('receive_audio', (msg) => appendMessage(msg.user, msg.audio, msg.time, 'audio'));
+
+    socket.on('system_message', (text) => {
+      const div = document.createElement('div');
+      div.className = 'sys-msg';
+      div.innerText = text;
+      chatBox.appendChild(div);
+      chatBox.scrollTop = chatBox.scrollHeight;
+      lastSender = ""; 
+    });
+
+    socket.on('room_users', (usersArray) => {
+      activeUsersBar.innerText = `👥 Online: ${usersArray.join(', ')}`;
+    });
+
+    socket.on('user_typing', (data) => {
+      typingIndicator.innerText = data.isTyping ? `${data.user} is typing...` : '';
+    });
+
+    // UPDATED: Handle Text, Images, and Audio
+    function appendMessage(user, content, time, type) {
+      const isMe = user === myName;
+      const alignClass = isMe ? 'me' : 'them';
+      
+      const groupDiv = document.createElement('div');
+      groupDiv.className = `msg-group ${alignClass}`;
+
+      if (lastSender !== user) {
+        const metaDiv = document.createElement('div');
+        metaDiv.className = 'meta';
+        metaDiv.innerText = `${user} • ${time}`;
+        groupDiv.appendChild(metaDiv);
+      }
+
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'msg';
+      
+      if (type === 'image') {
+        msgDiv.innerHTML = `<img src="${content}" alt="Photo">`;
+      } else if (type === 'audio') {
+        msgDiv.innerHTML = `<audio controls src="${content}"></audio>`;
+      } else {
+        msgDiv.innerText = content;
+      }
+      
+      groupDiv.appendChild(msgDiv);
+      chatBox.appendChild(groupDiv);
+      chatBox.scrollTop = chatBox.scrollHeight;
+      lastSender = user;
+    }
+
+    function sendMessage() {
+      const text = messageInput.value.trim();
+      if (!text) return;
+      socket.emit('send_message', { user: myName, text });
+      socket.emit('typing', false); 
+      messageInput.value = '';
+    }
+
+    imageInput.addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        socket.emit('send_image', { user: myName, image: event.target.result });
+      };
+      reader.readAsDataURL(file);
+      imageInput.value = "";
+    });
+    
+    // NEW: Tap-to-Record Voice Notes Logic
+    async function toggleRecording() {
+      if (!isRecording) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream);
+          mediaRecorder.start();
+          isRecording = true;
+          micBtn.classList.add('recording');
+          
+          mediaRecorder.ondataavailable = (e) => {
+            audioChunks.push(e.data);
+          };
+
+          mediaRecorder.onstop = () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            audioChunks = [];
+            const reader = new FileReader();
+            reader.onload = function(event) {
+              socket.emit('send_audio', { user: myName, audio: event.target.result });
+            };
+            reader.readAsDataURL(audioBlob);
+            
+            // Turn off the microphone hardware
+            stream.getTracks().forEach(track => track.stop());
+          };
+        } catch (err) {
+          console.error(err);
+          alert("Microphone access denied! (Note: Microphones require an HTTPS link like loca.lt or localhost)");
+        }
+      } else {
+        // Stop recording on second tap
+        if (mediaRecorder && mediaRecorder.state === "recording") {
+          mediaRecorder.stop();
+        }
+        isRecording = false;
+        micBtn.classList.remove('recording');
+      }
+    }
+
+    messageInput.addEventListener('input', () => {
+      socket.emit('typing', true);
+      clearTimeout(typingTimer);
+      typingTimer = setTimeout(() => socket.emit('typing', false), 1500);
+    });
+
+    messageInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
+  </script>
+</body>
+</html>

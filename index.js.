@@ -1,0 +1,24 @@
+const express = require('express');
+());
+const sqlite3 = require('sqlite3').verbose();
+const app = express();
+const port = 3000;
+
+// Connect to your existing database file
+const db = new sqlite3.Database('./mela.db');
+
+// Route to get all users
+app.get('/users', (req, res) => {
+  const sql = "SELECT * FROM users";
+  db.all(sql, [], (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json({ users: rows });
+  });
+});
+
+app.listen(port, () => {
+  console.log(`Server is running at http://localhost:${port}`);
+
