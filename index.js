@@ -9,13 +9,11 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
-// Check for the Cloud Database URL
 if (!process.env.DATABASE_URL) {
     console.error("FATAL ERROR: DATABASE_URL environment variable is missing!");
     process.exit(1);
 }
 
-// Connect to PostgreSQL
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false }
@@ -23,7 +21,6 @@ const pool = new Pool({
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Initialize Cloud Tables
 pool.query(`
     CREATE TABLE IF NOT EXISTS messages (
         id SERIAL PRIMARY KEY, 
@@ -134,4 +131,4 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => { console.log(`Server is running on port ${PORT}`); });
+server.listen(PORT, () => { console.log("Server is running"); });
