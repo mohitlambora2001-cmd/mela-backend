@@ -1,8 +1,6 @@
-// 1. Ask for username AND Room Code
 const myName = prompt("Welcome to Mela Hub! What is your name?") || "Anonymous";
 const myRoom = prompt("Enter a Room Code (or leave blank for Global):") || "Global";
 
-// 2. Tell the server to put us in that room immediately
 socket.emit('join room', myRoom);
 
 const originalEmit = socket.emit;
@@ -16,25 +14,86 @@ socket.emit = function(eventName, data) {
 
 const chatWindow = document.getElementById('chat-box');
 
-socket.on('chat message', (data) => {
-    if (!chatWindow) return;
+// Helper to render Images
+function appendImageToChat(user, base64Str) {
     const item = document.createElement('div');
-    item.innerHTML = `<span style="color: var(--primary); font-weight: bold;">${data.user}:</span> <span style="color: white;">${data.text}</span>`;
+    item.style.marginBottom = "12px";
+    item.innerHTML = `<span style="color: var(--primary); font-weight: bold;">${user}:</span><br><img src="${base64Str}" style="max-width: 80%; max-height: 250px; border-radius: 8px; margin-top: 5px; border: 1px solid #444;" onclick="window.open(this.src)">`;
     chatWindow.appendChild(item);
     chatWindow.scrollTop = chatWindow.scrollHeight;
-});
+}
 
-// FIX: Clear the window first so changing rooms doesn't stack old messages
-socket.on('chat history', (history) => {
-    if (!chatWindow) return;
-    chatWindow.innerHTML = ''; 
-    history.forEach(data => {
+// Helper to render Videos
+function appendVideoToChat(user, base64Str) {
+    const item = document.createElement('div');
+    item.style.marginBottom = "12px";
+    item.innerHTML = `<span style="color: var(--primary); font-weight: bold;">${user}:</span><br><video src="${base64Str}" controls style="max-width: 80%; max-height: 250px; border-radius: 8px; margin-top: 5px; border: 1px solid #444; background: #000;"></video>`;
+    chatWindow.appendChild(item);
+    chatWindow.scrollTop = chatWindow.scrollHeight;
+}
+
+// The Universal Chat Parser
+function parseIncomingMessage(data) {
+    if (data.text.startsWith('IMG_DATA:')) {
+        appendImageToChat(data.user, data.text.replace('IMG_DATA:', ''));
+    } else if (data.text.startsWith('VID_DATA:')) {
+        appendVideoToChat(data.user, data.text.replace('VID_DATA:', ''));
+    } else {
         const item = document.createElement('div');
         item.innerHTML = `<span style="color: var(--primary); font-weight: bold;">${data.user}:</span> <span style="color: white;">${data.text}</span>`;
         chatWindow.appendChild(item);
-    });
+    }
+}
+
+socket.on('chat message', (data) => { if (chatWindow) { parseIncomingMessage(data); chatWindow.scrollTop = chatWindow.scrollHeight; } });
+socket.on('receive_image', (data) => { if (chatWindow) appendImageToChat(data.user, data.image); });
+socket.on('receive_video', (data) => { if (chatWindow) appendVideoToChat(data.user, data.video); });
+
+socket.on('chat history', (history) => {
+    if (!chatWindow) return;
+    chatWindow.innerHTML = ''; 
+    history.forEach(data => parseIncomingMessage(data));
     chatWindow.scrollTop = chatWindow.scrollHeight;
 });
+
+// Photo Upload Logic (Hooks to your HTML)
+setTimeout(() => {
+    const imgInput = document.getElementById('imageInput');
+    if (imgInput) {
+        imgInput.onchange = function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(event) { socket.emit('send_image', { user: myName, image: event.target.result }); };
+            reader.readAsDataURL(file);
+        };
+    }
+}, 1000);
+
+// Video Upload Logic (Dynamic Injection)
+const videoInput = document.createElement('input');
+videoInput.type = 'file';
+videoInput.accept = 'video/mp4,video/webm,video/ogg';
+videoInput.style.display = 'none';
+document.body.appendChild(videoInput);
+
+const videoBtn = document.createElement('button');
+videoBtn.innerHTML = '🎥';
+videoBtn.style.cssText = 'position:fixed; top:130px; right:10px; background:#eab308; color:white; border:none; width:50px; height:50px; border-radius:50%; z-index:999; cursor:pointer; font-size:20px; box-shadow: 0px 4px 10px rgba(0,0,0,0.3);';
+document.body.appendChild(videoBtn);
+
+videoBtn.onclick = () => videoInput.click();
+videoInput.onchange = function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+        alert("Whoa there! Video is too large. Please select a clip under 5MB so the database doesn't crash.");
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = function(event) { socket.emit('send_video', { user: myName, video: event.target.result }); };
+    reader.readAsDataURL(file);
+};
 
 socket.on('typing', (isTyping) => {
     if (!chatWindow) return;
@@ -53,20 +112,17 @@ socket.on('typing', (isTyping) => {
     }
 });
 
-// 6. Handle incoming voice notes!
+// Voice Note Logic
 socket.on('receive_audio', (data) => {
     if (!chatWindow) return;
     const item = document.createElement('div');
     item.style.marginBottom = "10px";
-    item.innerHTML = `
-        <span style="color: var(--primary); font-weight: bold;">${data.user} sent a voice note:</span><br>
-        <audio controls src="${data.audio}" style="margin-top: 5px; height: 40px; max-width: 100%; border-radius: 20px;"></audio>
-    `;
+    item.innerHTML = `<span style="color: var(--primary); font-weight: bold;">${data.user} sent a voice note:</span><br><audio controls src="${data.audio}" style="margin-top: 5px; height: 40px; max-width: 100%; border-radius: 20px;"></audio>`;
     chatWindow.appendChild(item);
     chatWindow.scrollTop = chatWindow.scrollHeight;
 });
 
-// 7. WEBRTC VIDEO CALLING LOGIC (Floating UI)
+// WEBRTC VIDEO CALLING LOGIC
 const videoContainer = document.createElement('div');
 videoContainer.innerHTML = `
     <div id="video-ui" style="display:none; position:fixed; top:70px; right:10px; width:150px; background:#000; border-radius:12px; overflow:hidden; z-index:1000; border:2px solid var(--primary); box-shadow: 0px 4px 10px rgba(0,0,0,0.5);">
@@ -83,16 +139,13 @@ const remoteVideo = document.getElementById('remote-video');
 const startCallBtn = document.getElementById('start-call-btn');
 const endCallBtn = document.getElementById('end-call-btn');
 const videoUi = document.getElementById('video-ui');
-
-let localStream;
-let peerConnection;
+let localStream; let peerConnection;
 const servers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
 async function startMedia() {
     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     localVideo.srcObject = localStream;
 }
-
 function createPeerConnection() {
     const pc = new RTCPeerConnection(servers);
     pc.onicecandidate = event => { if (event.candidate) socket.emit('webrtc_ice_candidate', event.candidate); };
@@ -101,8 +154,7 @@ function createPeerConnection() {
 }
 
 startCallBtn.onclick = async () => {
-    startCallBtn.style.display = 'none';
-    videoUi.style.display = 'block';
+    startCallBtn.style.display = 'none'; videoUi.style.display = 'block';
     await startMedia();
     peerConnection = createPeerConnection();
     localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
@@ -114,15 +166,12 @@ startCallBtn.onclick = async () => {
 endCallBtn.onclick = () => {
     if(peerConnection) peerConnection.close();
     if(localStream) localStream.getTracks().forEach(track => track.stop());
-    videoUi.style.display = 'none';
-    startCallBtn.style.display = 'block';
-    remoteVideo.srcObject = null;
-    localVideo.srcObject = null;
+    videoUi.style.display = 'none'; startCallBtn.style.display = 'block';
+    remoteVideo.srcObject = null; localVideo.srcObject = null;
 };
 
 socket.on('webrtc_offer', async (offer) => {
-    startCallBtn.style.display = 'none';
-    videoUi.style.display = 'block';
+    startCallBtn.style.display = 'none'; videoUi.style.display = 'block';
     await startMedia();
     peerConnection = createPeerConnection();
     localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
@@ -132,10 +181,5 @@ socket.on('webrtc_offer', async (offer) => {
     socket.emit('webrtc_answer', answer);
 });
 
-socket.on('webrtc_answer', async (answer) => {
-    await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-});
-
-socket.on('webrtc_ice_candidate', async (candidate) => {
-    if (peerConnection) await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-});
+socket.on('webrtc_answer', async (answer) => { await peerConnection.setRemoteDescription(new RTCSessionDescription(answer)); });
+socket.on('webrtc_ice_candidate', async (candidate) => { if (peerConnection) await peerConnection.addIceCandidate(new RTCIceCandidate(candidate)); });
