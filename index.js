@@ -3,6 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
+const bcrypt = require('bcryptjs');
 
 const app = express();
 const server = http.createServer(app);
@@ -11,14 +12,49 @@ const io = new Server(server, { cors: { origin: "*" } });
 const db = new sqlite3.Database('./mela.db');
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Initialize Database Tables
+db.serialize(() => {
+    db.run("CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT, text TEXT, room TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)");
+    db.run("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT)");
+});
+
 const roomUsers = {}; 
 
 io.on('connection', (socket) => {
-    console.log('A user connected:', socket.id);
+    console.log('User connected:', socket.id);
+
+    // AUTHENTICATION ENGINE
+    socket.on('register', (data) => {
+        const { username, password, room, secret } = data;
+        db.get("SELECT username FROM users WHERE username = ?", [username], (err, row) => {
+            if (row) {
+                socket.emit('auth_error', 'Username is already taken!');
+            } else {
+                const hash = bcrypt.hashSync(password, 8);
+                db.run("INSERT INTO users (username, password) VALUES (?, ?)", [username, hash], function(err) {
+                    if (err) socket.emit('auth_error', 'Registration failed.');
+                    else socket.emit('auth_success', { username, room, secret });
+                });
+            }
+        });
+    });
+
+    socket.on('login', (data) => {
+        const { username, password, room, secret } = data;
+        db.get("SELECT * FROM users WHERE username = ?", [username], (err, row) => {
+            if (!row) {
+                socket.emit('auth_error', 'Username not found!');
+            } else {
+                const isValid = bcrypt.compareSync(password, row.password);
+                if (isValid) socket.emit('auth_success', { username, room, secret });
+                else socket.emit('auth_error', 'Incorrect password!');
+            }
+        });
+    });
 
     socket.on('join room', (data) => {
-        const room = typeof data === 'string' ? data : data.room;
-        const user = typeof data === 'string' ? 'Anonymous' : data.user;
+        const room = data.room || 'Global';
+        const user = data.user || 'Anonymous';
         
         socket.join(room);
         socket.room = room;
@@ -29,14 +65,12 @@ io.on('connection', (socket) => {
 
         io.to(room).emit('room users', Object.values(roomUsers[room]));
         
-        // FIX: Now fetching the unique 'id' from the database
         db.all("SELECT id, user, text, timestamp FROM messages WHERE room = ? ORDER BY id DESC LIMIT 50", [room], (err, rows) => {
             if (err) return console.error(err.message);
             socket.emit('chat history', rows.reverse());
         });
     });
 
-    // FIX: Emit the new database ID back to the chat room after saving
     socket.on('chat message', (data) => {
         const room = socket.room || 'Global';
         db.run("INSERT INTO messages (user, text, room) VALUES (?, ?, ?)", [data.user, data.text, room], function(err) {
@@ -63,7 +97,6 @@ io.on('connection', (socket) => {
         });
     });
 
-    // NEW: The Deletion Engine
     socket.on('delete_message', (id) => {
         const room = socket.room || 'Global';
         db.run("DELETE FROM messages WHERE id = ?", [id], function(err) {

@@ -1,14 +1,65 @@
-// 1. MEMORY ENGINE & E2EE KEYS
+// 1. SECURE AUTHENTICATION UI & MEMORY
 let myName = localStorage.getItem('mela_username');
-if (!myName) { myName = prompt("Welcome! What is your name?") || "Anonymous"; localStorage.setItem('mela_username', myName); }
-
 let myRoom = localStorage.getItem('mela_room');
-if (!myRoom) { myRoom = prompt("Enter a Room Code (or leave blank for Global):") || "Global"; localStorage.setItem('mela_room', myRoom); }
-
 let mySecret = localStorage.getItem('mela_secret');
-if (!mySecret) { mySecret = prompt("🔐 Enter a Secret Encryption Key (Anyone in the room needs this exact key to read your messages):") || "default123"; localStorage.setItem('mela_secret', mySecret); }
 
-socket.emit('join room', { room: myRoom, user: myName });
+const authOverlay = document.createElement('div');
+authOverlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:#0f172a; z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center; color:white; font-family:sans-serif;';
+authOverlay.innerHTML = `
+    <h1 style="color:var(--primary, #10b981); margin-bottom:10px; font-size: 2.5rem;">Mela Hub</h1>
+    <p style="margin-bottom:20px; color:#94a3b8;">Secure E2EE Comm Link</p>
+    <input id="auth-user" placeholder="Username" style="margin:5px; padding:12px; border-radius:8px; border:none; width:80%; max-width:300px; font-size:16px; outline:none; color:black;">
+    <input id="auth-pass" type="password" placeholder="Password" style="margin:5px; padding:12px; border-radius:8px; border:none; width:80%; max-width:300px; font-size:16px; outline:none; color:black;">
+    <input id="auth-room" placeholder="Room Code (Optional)" style="margin:5px; padding:12px; border-radius:8px; border:none; width:80%; max-width:300px; font-size:16px; outline:none; color:black;">
+    <input id="auth-secret" type="password" placeholder="E2EE Secret Key" style="margin:5px; padding:12px; border-radius:8px; border:none; width:80%; max-width:300px; font-size:16px; outline:none; color:black;">
+    <div style="margin-top:20px; display:flex; gap:15px;">
+        <button id="auth-login" style="padding:12px 24px; background:var(--primary, #10b981); color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-size:16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">Login</button>
+        <button id="auth-reg" style="padding:12px 24px; background:#3b82f6; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-size:16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">Register</button>
+    </div>
+    <p id="auth-msg" style="color:#ef4444; margin-top:15px; font-size:0.9rem; height:20px; font-weight:bold;"></p>
+`;
+
+if (!myName) {
+    document.body.appendChild(authOverlay);
+} else {
+    socket.emit('join room', { room: myRoom, user: myName });
+}
+
+setTimeout(() => {
+    const loginBtn = document.getElementById('auth-login');
+    const regBtn = document.getElementById('auth-reg');
+    const msg = document.getElementById('auth-msg');
+
+    if(loginBtn) loginBtn.onclick = () => {
+        const u = document.getElementById('auth-user').value.trim();
+        const p = document.getElementById('auth-pass').value;
+        const r = document.getElementById('auth-room').value.trim() || 'Global';
+        const s = document.getElementById('auth-secret').value || 'default123';
+        if(!u || !p) return msg.innerText = "Username and Password required!";
+        socket.emit('login', { username: u, password: p, room: r, secret: s });
+    };
+
+    if(regBtn) regBtn.onclick = () => {
+        const u = document.getElementById('auth-user').value.trim();
+        const p = document.getElementById('auth-pass').value;
+        const r = document.getElementById('auth-room').value.trim() || 'Global';
+        const s = document.getElementById('auth-secret').value || 'default123';
+        if(!u || !p) return msg.innerText = "Username and Password required!";
+        socket.emit('register', { username: u, password: p, room: r, secret: s });
+    };
+}, 100);
+
+socket.on('auth_success', (data) => {
+    myName = data.username; myRoom = data.room; mySecret = data.secret;
+    localStorage.setItem('mela_username', myName); localStorage.setItem('mela_room', myRoom); localStorage.setItem('mela_secret', mySecret);
+    if(document.body.contains(authOverlay)) document.body.removeChild(authOverlay);
+    socket.emit('join room', { room: myRoom, user: myName });
+});
+
+socket.on('auth_error', (errorMsg) => {
+    const msg = document.getElementById('auth-msg');
+    if(msg) msg.innerText = errorMsg;
+});
 
 // 2. THE ENCRYPTION INTERCEPTOR (Locks message BEFORE it leaves your phone)
 const originalEmit = socket.emit;
