@@ -73,6 +73,27 @@
     #send-btn { background: var(--primary); color: white; border: none; border-radius: 50%; min-width: 44px; height: 44px; display: flex; justify-content: center; align-items: center; cursor: pointer; }
     #send-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; margin-left: -2px;}
   </style>
+    <link rel="manifest" href="/manifest.json">
+
+    <meta name="theme-color" content="#10b981">
+
+    <meta name="apple-mobile-web-app-capable" content="yes">
+
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <script>
+
+      if ("serviceWorker" in navigator) {
+
+        window.addEventListener("load", () => {
+
+          navigator.serviceWorker.register("/sw.js").then(() => console.log("Service Worker Registered"));
+
+        });
+
+      }
+
+    </script>
 </head>
 <body>
 
