@@ -65,3 +65,77 @@ socket.on('receive_audio', (data) => {
     chatWindow.appendChild(item);
     chatWindow.scrollTop = chatWindow.scrollHeight;
 });
+
+// 7. WEBRTC VIDEO CALLING LOGIC (Floating UI)
+const videoContainer = document.createElement('div');
+videoContainer.innerHTML = `
+    <div id="video-ui" style="display:none; position:fixed; top:70px; right:10px; width:150px; background:#000; border-radius:12px; overflow:hidden; z-index:1000; border:2px solid var(--primary); box-shadow: 0px 4px 10px rgba(0,0,0,0.5);">
+        <video id="remote-video" autoplay playsinline style="width:100%; background:#222; display:block;"></video>
+        <video id="local-video" autoplay playsinline muted style="width:50px; position:absolute; bottom:35px; right:5px; border-radius:5px; border:1px solid #fff; z-index:1001;"></video>
+        <button id="end-call-btn" style="width:100%; background:#ff4444; color:white; border:none; padding:8px; font-weight:bold; cursor:pointer; z-index:1002; position:relative;">End Call</button>
+    </div>
+    <button id="start-call-btn" style="position:fixed; top:70px; right:10px; background:var(--primary); color:white; border:none; width:50px; height:50px; border-radius:50%; z-index:999; cursor:pointer; font-size:24px; box-shadow: 0px 4px 10px rgba(0,0,0,0.3);">📹</button>
+`;
+document.body.appendChild(videoContainer);
+
+const localVideo = document.getElementById('local-video');
+const remoteVideo = document.getElementById('remote-video');
+const startCallBtn = document.getElementById('start-call-btn');
+const endCallBtn = document.getElementById('end-call-btn');
+const videoUi = document.getElementById('video-ui');
+
+let localStream;
+let peerConnection;
+const servers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+async function startMedia() {
+    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    localVideo.srcObject = localStream;
+}
+
+function createPeerConnection() {
+    const pc = new RTCPeerConnection(servers);
+    pc.onicecandidate = event => { if (event.candidate) socket.emit('webrtc_ice_candidate', event.candidate); };
+    pc.ontrack = event => { remoteVideo.srcObject = event.streams[0]; };
+    return pc;
+}
+
+startCallBtn.onclick = async () => {
+    startCallBtn.style.display = 'none';
+    videoUi.style.display = 'block';
+    await startMedia();
+    peerConnection = createPeerConnection();
+    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+    socket.emit('webrtc_offer', offer);
+};
+
+endCallBtn.onclick = () => {
+    if(peerConnection) peerConnection.close();
+    if(localStream) localStream.getTracks().forEach(track => track.stop());
+    videoUi.style.display = 'none';
+    startCallBtn.style.display = 'block';
+    remoteVideo.srcObject = null;
+    localVideo.srcObject = null;
+};
+
+socket.on('webrtc_offer', async (offer) => {
+    startCallBtn.style.display = 'none';
+    videoUi.style.display = 'block';
+    await startMedia();
+    peerConnection = createPeerConnection();
+    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+    const answer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answer);
+    socket.emit('webrtc_answer', answer);
+});
+
+socket.on('webrtc_answer', async (answer) => {
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+});
+
+socket.on('webrtc_ice_candidate', async (candidate) => {
+    if (peerConnection) await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+});
