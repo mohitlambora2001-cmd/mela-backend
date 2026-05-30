@@ -127,3 +127,33 @@ socket.on('receive_audio', (data) => { if (data.user !== myName) triggerNotifica
 
 const logoutBtn = document.createElement('button'); logoutBtn.innerHTML = '🔄'; logoutBtn.style.cssText = 'position:fixed; top:190px; right:10px; background:#444; color:white; border:none; width:50px; height:50px; border-radius:50%; z-index:999; cursor:pointer; font-size:20px; box-shadow: 0px 4px 10px rgba(0,0,0,0.3);'; document.body.appendChild(logoutBtn);
 logoutBtn.onclick = () => { if(confirm("Log out, wipe memory, and change rooms?")) { localStorage.clear(); window.location.reload(); } };
+
+// 10. DOWNLOAD CHAT EXPORT FEATURE 📜
+const downloadBtn = document.createElement('button');
+downloadBtn.innerHTML = '📜';
+downloadBtn.style.cssText = 'position:fixed; top:250px; right:10px; background:#3b82f6; color:white; border:none; width:50px; height:50px; border-radius:50%; z-index:999; cursor:pointer; font-size:20px; box-shadow: 0px 4px 10px rgba(0,0,0,0.3);';
+document.body.appendChild(downloadBtn);
+
+downloadBtn.onclick = () => {
+    if(confirm("Download a copy of this decrypted chat history?")) {
+        let chatText = `--- Mela Hub Chat Export (Room: ${myRoom}) ---\nGenerated on: ${new Date().toLocaleString()}\n\n`;
+        
+        // Iterate through all the message bubbles on the screen
+        Array.from(chatWindow.children).forEach(msgNode => {
+            // Grab the text, remove the delete button emoji, and clean up the spacing
+            let text = msgNode.innerText.replace('🗑️', '').trim();
+            if(text) chatText += text + "\n\n";
+        });
+        
+        // Generate the physical .txt file in the browser memory
+        const blob = new Blob([chatText], { type: "text/plain" });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `MelaHub_${myRoom}_Chat.txt`;
+        
+        // Trigger the download silently
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
+};
