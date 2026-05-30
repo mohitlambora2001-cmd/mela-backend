@@ -1,7 +1,7 @@
 // 1. Ask for username when the page loads
 const myName = prompt("Welcome to Mela Hub! What is your name?") || "Anonymous";
 
-// 2. Sneaky Trick: Intercept the old message sender to attach your username
+// 2. Intercept the old message sender to attach your username
 const originalEmit = socket.emit;
 socket.emit = function(eventName, data) {
     if (eventName === 'chat message' && typeof data === 'string') {
@@ -11,34 +11,38 @@ socket.emit = function(eventName, data) {
     }
 };
 
-const chatWindow = document.getElementById('messages');
+// FIX: Target your specific custom UI ID
+const chatWindow = document.getElementById('chat-box');
 
 // 3. Handle receiving live messages
 socket.on('chat message', (data) => {
-    const item = document.createElement('li');
-    item.innerHTML = `<strong>${data.user}:</strong> ${data.text}`;
+    if (!chatWindow) return;
+    const item = document.createElement('div'); // Changed to div for your flexbox layout
+    item.innerHTML = `<span style="color: var(--primary); font-weight: bold;">${data.user}:</span> <span style="color: white;">${data.text}</span>`;
     chatWindow.appendChild(item);
-    window.scrollTo(0, document.body.scrollHeight);
+    chatWindow.scrollTop = chatWindow.scrollHeight;
 });
 
 // 4. Load Chat History
 socket.on('chat history', (history) => {
+    if (!chatWindow) return;
     history.forEach(data => {
-        const item = document.createElement('li');
-        item.innerHTML = `<strong>${data.user}:</strong> ${data.text}`;
+        const item = document.createElement('div');
+        item.innerHTML = `<span style="color: var(--primary); font-weight: bold;">${data.user}:</span> <span style="color: white;">${data.text}</span>`;
         chatWindow.appendChild(item);
     });
-    window.scrollTo(0, document.body.scrollHeight);
+    chatWindow.scrollTop = chatWindow.scrollHeight;
 });
 
 // 5. Typing Indicator display
 socket.on('typing', (isTyping) => {
+    if (!chatWindow) return;
     let indicator = document.getElementById('typing-indicator');
     if (isTyping) {
         if (!indicator) {
-            indicator = document.createElement('li');
+            indicator = document.createElement('div');
             indicator.id = 'typing-indicator';
-            indicator.style.color = 'gray';
+            indicator.style.color = '#888';
             indicator.style.fontStyle = 'italic';
             indicator.textContent = 'Someone is typing...';
             chatWindow.appendChild(indicator);
