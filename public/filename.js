@@ -157,3 +157,27 @@ downloadBtn.onclick = () => {
         document.body.removeChild(a);
     }
 };
+
+// 11. CUSTOM THEMES 🎨 (Dynamic Color Picker)
+const themeBtn = document.createElement('button');
+themeBtn.innerHTML = '🎨';
+themeBtn.style.cssText = 'position:fixed; top:310px; right:10px; background:#8b5cf6; color:white; border:none; width:50px; height:50px; border-radius:50%; z-index:999; cursor:pointer; font-size:20px; box-shadow: 0px 4px 10px rgba(0,0,0,0.3);';
+document.body.appendChild(themeBtn);
+
+const colorInput = document.createElement('input');
+colorInput.type = 'color';
+colorInput.style.display = 'none';
+document.body.appendChild(colorInput);
+
+// Load saved color on startup (defaults to your original cool green)
+let savedColor = localStorage.getItem('mela_theme_color') || '#10b981';
+document.documentElement.style.setProperty('--primary', savedColor);
+
+themeBtn.onclick = () => colorInput.click();
+
+// Dynamically inject the new color across the whole UI
+colorInput.addEventListener('input', (e) => {
+    const newColor = e.target.value;
+    document.documentElement.style.setProperty('--primary', newColor);
+    localStorage.setItem('mela_theme_color', newColor);
+});
