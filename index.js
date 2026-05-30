@@ -46,6 +46,11 @@ socket.on('send_audio', (data) => {
         io.to(room).emit('receive_audio', data);
     });
 
+// WebRTC Signaling
+    socket.on('webrtc_offer', (event) => { socket.broadcast.to(socket.room || 'Global').emit('webrtc_offer', event); });
+    socket.on('webrtc_answer', (event) => { socket.broadcast.to(socket.room || 'Global').emit('webrtc_answer', event); });
+    socket.on('webrtc_ice_candidate', (event) => { socket.broadcast.to(socket.room || 'Global').emit('webrtc_ice_candidate', event); });
+
     socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);
     });
