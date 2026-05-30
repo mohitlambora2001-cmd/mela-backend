@@ -1,5 +1,15 @@
-const myName = prompt("Welcome to Mela Hub! What is your name?") || "Anonymous";
-const myRoom = prompt("Enter a Room Code (or leave blank for Global):") || "Global";
+// 1. LOCAL STORAGE ENGINE (Remember Me)
+let myName = localStorage.getItem('mela_username');
+if (!myName) {
+    myName = prompt("Welcome to Mela Hub! What is your name?") || "Anonymous";
+    localStorage.setItem('mela_username', myName);
+}
+
+let myRoom = localStorage.getItem('mela_room');
+if (!myRoom) {
+    myRoom = prompt("Enter a Room Code (or leave blank for Global):") || "Global";
+    localStorage.setItem('mela_room', myRoom);
+}
 
 socket.emit('join room', myRoom);
 
@@ -14,7 +24,7 @@ socket.emit = function(eventName, data) {
 
 const chatWindow = document.getElementById('chat-box');
 
-// Helper to render Images
+// 2. THE UNIVERSAL CHAT PARSER
 function appendImageToChat(user, base64Str) {
     const item = document.createElement('div');
     item.style.marginBottom = "12px";
@@ -23,7 +33,6 @@ function appendImageToChat(user, base64Str) {
     chatWindow.scrollTop = chatWindow.scrollHeight;
 }
 
-// Helper to render Videos
 function appendVideoToChat(user, base64Str) {
     const item = document.createElement('div');
     item.style.marginBottom = "12px";
@@ -32,7 +41,6 @@ function appendVideoToChat(user, base64Str) {
     chatWindow.scrollTop = chatWindow.scrollHeight;
 }
 
-// The Universal Chat Parser
 function parseIncomingMessage(data) {
     if (data.text.startsWith('IMG_DATA:')) {
         appendImageToChat(data.user, data.text.replace('IMG_DATA:', ''));
@@ -56,7 +64,7 @@ socket.on('chat history', (history) => {
     chatWindow.scrollTop = chatWindow.scrollHeight;
 });
 
-// Photo Upload Logic (Hooks to your HTML)
+// 3. MEDIA UPLOADERS (Images, Video, Audio)
 setTimeout(() => {
     const imgInput = document.getElementById('imageInput');
     if (imgInput) {
@@ -70,7 +78,6 @@ setTimeout(() => {
     }
 }, 1000);
 
-// Video Upload Logic (Dynamic Injection)
 const videoInput = document.createElement('input');
 videoInput.type = 'file';
 videoInput.accept = 'video/mp4,video/webm,video/ogg';
@@ -87,13 +94,22 @@ videoInput.onchange = function(e) {
     const file = e.target.files[0];
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
-        alert("Whoa there! Video is too large. Please select a clip under 5MB so the database doesn't crash.");
+        alert("Whoa there! Please select a video under 5MB.");
         return;
     }
     const reader = new FileReader();
     reader.onload = function(event) { socket.emit('send_video', { user: myName, video: event.target.result }); };
     reader.readAsDataURL(file);
 };
+
+socket.on('receive_audio', (data) => {
+    if (!chatWindow) return;
+    const item = document.createElement('div');
+    item.style.marginBottom = "10px";
+    item.innerHTML = `<span style="color: var(--primary); font-weight: bold;">${data.user} sent a voice note:</span><br><audio controls src="${data.audio}" style="margin-top: 5px; height: 40px; max-width: 100%; border-radius: 20px;"></audio>`;
+    chatWindow.appendChild(item);
+    chatWindow.scrollTop = chatWindow.scrollHeight;
+});
 
 socket.on('typing', (isTyping) => {
     if (!chatWindow) return;
@@ -112,17 +128,7 @@ socket.on('typing', (isTyping) => {
     }
 });
 
-// Voice Note Logic
-socket.on('receive_audio', (data) => {
-    if (!chatWindow) return;
-    const item = document.createElement('div');
-    item.style.marginBottom = "10px";
-    item.innerHTML = `<span style="color: var(--primary); font-weight: bold;">${data.user} sent a voice note:</span><br><audio controls src="${data.audio}" style="margin-top: 5px; height: 40px; max-width: 100%; border-radius: 20px;"></audio>`;
-    chatWindow.appendChild(item);
-    chatWindow.scrollTop = chatWindow.scrollHeight;
-});
-
-// WEBRTC VIDEO CALLING LOGIC
+// 4. WEBRTC VIDEO CALLING LOGIC
 const videoContainer = document.createElement('div');
 videoContainer.innerHTML = `
     <div id="video-ui" style="display:none; position:fixed; top:70px; right:10px; width:150px; background:#000; border-radius:12px; overflow:hidden; z-index:1000; border:2px solid var(--primary); box-shadow: 0px 4px 10px rgba(0,0,0,0.5);">
@@ -183,3 +189,17 @@ socket.on('webrtc_offer', async (offer) => {
 
 socket.on('webrtc_answer', async (answer) => { await peerConnection.setRemoteDescription(new RTCSessionDescription(answer)); });
 socket.on('webrtc_ice_candidate', async (candidate) => { if (peerConnection) await peerConnection.addIceCandidate(new RTCIceCandidate(candidate)); });
+
+// 5. CHANGE ROOM / LOGOUT BUTTON
+const logoutBtn = document.createElement('button');
+logoutBtn.innerHTML = '🔄';
+logoutBtn.style.cssText = 'position:fixed; top:190px; right:10px; background:#444; color:white; border:none; width:50px; height:50px; border-radius:50%; z-index:999; cursor:pointer; font-size:20px; box-shadow: 0px 4px 10px rgba(0,0,0,0.3);';
+document.body.appendChild(logoutBtn);
+
+logoutBtn.onclick = () => {
+    if(confirm("Log out and change rooms?")) {
+        localStorage.removeItem('mela_username');
+        localStorage.removeItem('mela_room');
+        window.location.reload();
+    }
+};
