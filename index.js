@@ -41,6 +41,11 @@ io.on('connection', (socket) => {
         if (socket.room) socket.to(socket.room).emit('typing', status);
     });
 
+socket.on('send_audio', (data) => {
+        const room = socket.room || 'Global';
+        io.to(room).emit('receive_audio', data);
+    });
+
     socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);
     });

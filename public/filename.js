@@ -52,3 +52,16 @@ socket.on('typing', (isTyping) => {
         if (indicator) indicator.remove();
     }
 });
+
+// 6. Handle incoming voice notes!
+socket.on('receive_audio', (data) => {
+    if (!chatWindow) return;
+    const item = document.createElement('div');
+    item.style.marginBottom = "10px";
+    item.innerHTML = `
+        <span style="color: var(--primary); font-weight: bold;">${data.user} sent a voice note:</span><br>
+        <audio controls src="${data.audio}" style="margin-top: 5px; height: 40px; max-width: 100%; border-radius: 20px;"></audio>
+    `;
+    chatWindow.appendChild(item);
+    chatWindow.scrollTop = chatWindow.scrollHeight;
+});
