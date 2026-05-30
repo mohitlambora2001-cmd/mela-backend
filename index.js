@@ -2,34 +2,39 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
+const sqlite3 = require('sqlite3').verbose();
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
-// 1. Serve your frontend files from the "public" folder
-app.use(express.static(path.join(__dirname, 'public')));
+// Connect to the SQLite Database
+const db = new sqlite3.Database('./mela.db');
 
-// 2. The Message History Array (saves the last 50 messages)
-let messageHistory = [];
+app.use(express.static(path.join(__dirname, 'public')));
 
 io.on('connection', (socket) => {
     console.log('A user connected:', socket.id);
 
-    // Send history to whoever just opened the app
-    socket.emit('chat history', messageHistory);
-
-    // 3. Listen for messages (Now handles Usernames!)
-    socket.on('chat message', (data) => {
-        messageHistory.push(data);
-        if (messageHistory.length > 50) messageHistory.shift(); // Keep only the latest 50
-        
-        io.emit('chat message', data); // Broadcast to the room
+    // 1. Fetch the last 50 messages from the database
+    db.all("SELECT user, text FROM messages ORDER BY id DESC LIMIT 50", [], (err, rows) => {
+        if (err) return console.error(err.message);
+        // Reverse the rows so the newest messages stay at the bottom
+        socket.emit('chat history', rows.reverse());
     });
 
-    // 4. Typing Indicator Logic
+    // 2. Listen for messages and SAVE them permanently
+    socket.on('chat message', (data) => {
+        db.run("INSERT INTO messages (user, text) VALUES (?, ?)", [data.user, data.text], function(err) {
+            if (err) return console.error(err.message);
+            
+            // Broadcast to the room after saving
+            io.emit('chat message', data); 
+        });
+    });
+
     socket.on('typing', (status) => {
-        socket.broadcast.emit('typing', status); // Tells everyone else you are typing
+        socket.broadcast.emit('typing', status);
     });
 
     socket.on('disconnect', () => {
