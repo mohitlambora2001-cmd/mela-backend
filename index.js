@@ -8,7 +8,6 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
-// Connect to the SQLite Database
 const db = new sqlite3.Database('./mela.db');
 
 app.use(express.static(path.join(__dirname, 'public')));
@@ -16,25 +15,30 @@ app.use(express.static(path.join(__dirname, 'public')));
 io.on('connection', (socket) => {
     console.log('A user connected:', socket.id);
 
-    // 1. Fetch the last 50 messages from the database
-    db.all("SELECT user, text FROM messages ORDER BY id DESC LIMIT 50", [], (err, rows) => {
-        if (err) return console.error(err.message);
-        // Reverse the rows so the newest messages stay at the bottom
-        socket.emit('chat history', rows.reverse());
-    });
-
-    // 2. Listen for messages and SAVE them permanently
-    socket.on('chat message', (data) => {
-        db.run("INSERT INTO messages (user, text) VALUES (?, ?)", [data.user, data.text], function(err) {
+    // 1. Listen for users joining a specific room
+    socket.on('join room', (room) => {
+        socket.join(room);
+        socket.room = room; // Save the room name to this user's socket
+        
+        // 2. Fetch history ONLY for this secret room
+        db.all("SELECT user, text FROM messages WHERE room = ? ORDER BY id DESC LIMIT 50", [room], (err, rows) => {
             if (err) return console.error(err.message);
-            
-            // Broadcast to the room after saving
-            io.emit('chat message', data); 
+            socket.emit('chat history', rows.reverse());
         });
     });
 
+    // 3. Save messages with the room tag, and only broadcast to that room
+    socket.on('chat message', (data) => {
+        const room = socket.room || 'Global';
+        db.run("INSERT INTO messages (user, text, room) VALUES (?, ?, ?)", [data.user, data.text, room], function(err) {
+            if (err) return console.error(err.message);
+            io.to(room).emit('chat message', data); 
+        });
+    });
+
+    // 4. Isolate the typing indicator to the specific room
     socket.on('typing', (status) => {
-        socket.broadcast.emit('typing', status);
+        if (socket.room) socket.to(socket.room).emit('typing', status);
     });
 
     socket.on('disconnect', () => {

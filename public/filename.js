@@ -1,7 +1,10 @@
-// 1. Ask for username when the page loads
+// 1. Ask for username AND Room Code
 const myName = prompt("Welcome to Mela Hub! What is your name?") || "Anonymous";
+const myRoom = prompt("Enter a Room Code (or leave blank for Global):") || "Global";
 
-// 2. Intercept the old message sender to attach your username
+// 2. Tell the server to put us in that room immediately
+socket.emit('join room', myRoom);
+
 const originalEmit = socket.emit;
 socket.emit = function(eventName, data) {
     if (eventName === 'chat message' && typeof data === 'string') {
@@ -11,21 +14,20 @@ socket.emit = function(eventName, data) {
     }
 };
 
-// FIX: Target your specific custom UI ID
 const chatWindow = document.getElementById('chat-box');
 
-// 3. Handle receiving live messages
 socket.on('chat message', (data) => {
     if (!chatWindow) return;
-    const item = document.createElement('div'); // Changed to div for your flexbox layout
+    const item = document.createElement('div');
     item.innerHTML = `<span style="color: var(--primary); font-weight: bold;">${data.user}:</span> <span style="color: white;">${data.text}</span>`;
     chatWindow.appendChild(item);
     chatWindow.scrollTop = chatWindow.scrollHeight;
 });
 
-// 4. Load Chat History
+// FIX: Clear the window first so changing rooms doesn't stack old messages
 socket.on('chat history', (history) => {
     if (!chatWindow) return;
+    chatWindow.innerHTML = ''; 
     history.forEach(data => {
         const item = document.createElement('div');
         item.innerHTML = `<span style="color: var(--primary); font-weight: bold;">${data.user}:</span> <span style="color: white;">${data.text}</span>`;
@@ -34,7 +36,6 @@ socket.on('chat history', (history) => {
     chatWindow.scrollTop = chatWindow.scrollHeight;
 });
 
-// 5. Typing Indicator display
 socket.on('typing', (isTyping) => {
     if (!chatWindow) return;
     let indicator = document.getElementById('typing-indicator');
