@@ -2,106 +2,122 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
-const sqlite3 = require('sqlite3').verbose();
 const bcrypt = require('bcryptjs');
+const { Pool } = require('pg');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
-const db = new sqlite3.Database('./mela.db');
+// Check for the Cloud Database URL
+if (!process.env.DATABASE_URL) {
+    console.error("FATAL ERROR: DATABASE_URL environment variable is missing!");
+    process.exit(1);
+}
+
+// Connect to PostgreSQL
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Initialize Database Tables
-db.serialize(() => {
-    db.run("CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT, text TEXT, room TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)");
-    db.run("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT)");
-});
+// Initialize Cloud Tables
+pool.query(`
+    CREATE TABLE IF NOT EXISTS messages (
+        id SERIAL PRIMARY KEY, 
+        sender TEXT, 
+        text TEXT, 
+        room TEXT, 
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY, 
+        username TEXT UNIQUE, 
+        password TEXT
+    );
+`).catch(err => console.error("DB Init Error:", err));
 
 const roomUsers = {}; 
 
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
-    // AUTHENTICATION ENGINE
-    socket.on('register', (data) => {
+    socket.on('register', async (data) => {
         const { username, password, room, secret } = data;
-        db.get("SELECT username FROM users WHERE username = ?", [username], (err, row) => {
-            if (row) {
+        try {
+            const result = await pool.query("SELECT username FROM users WHERE username = $1", [username]);
+            if (result.rows.length > 0) {
                 socket.emit('auth_error', 'Username is already taken!');
             } else {
                 const hash = bcrypt.hashSync(password, 8);
-                db.run("INSERT INTO users (username, password) VALUES (?, ?)", [username, hash], function(err) {
-                    if (err) socket.emit('auth_error', 'Registration failed.');
-                    else socket.emit('auth_success', { username, room, secret });
-                });
+                await pool.query("INSERT INTO users (username, password) VALUES ($1, $2)", [username, hash]);
+                socket.emit('auth_success', { username, room, secret });
             }
-        });
+        } catch (err) { socket.emit('auth_error', 'Registration failed.'); }
     });
 
-    socket.on('login', (data) => {
+    socket.on('login', async (data) => {
         const { username, password, room, secret } = data;
-        db.get("SELECT * FROM users WHERE username = ?", [username], (err, row) => {
-            if (!row) {
+        try {
+            const result = await pool.query("SELECT * FROM users WHERE username = $1", [username]);
+            if (result.rows.length === 0) {
                 socket.emit('auth_error', 'Username not found!');
             } else {
-                const isValid = bcrypt.compareSync(password, row.password);
-                if (isValid) socket.emit('auth_success', { username, room, secret });
+                const user = result.rows[0];
+                if (bcrypt.compareSync(password, user.password)) socket.emit('auth_success', { username, room, secret });
                 else socket.emit('auth_error', 'Incorrect password!');
             }
-        });
+        } catch (err) { socket.emit('auth_error', 'Login failed.'); }
     });
 
-    socket.on('join room', (data) => {
+    socket.on('join room', async (data) => {
         const room = data.room || 'Global';
         const user = data.user || 'Anonymous';
         
-        socket.join(room);
-        socket.room = room;
-        socket.user = user;
-
+        socket.join(room); socket.room = room; socket.user = user;
         if (!roomUsers[room]) roomUsers[room] = {};
         roomUsers[room][socket.id] = user;
 
         io.to(room).emit('room users', Object.values(roomUsers[room]));
         
-        db.all("SELECT id, user, text, timestamp FROM messages WHERE room = ? ORDER BY id DESC LIMIT 50", [room], (err, rows) => {
-            if (err) return console.error(err.message);
-            socket.emit('chat history', rows.reverse());
-        });
+        try {
+            const res = await pool.query("SELECT id, sender AS user, text, timestamp FROM messages WHERE room = $1 ORDER BY id DESC LIMIT 50", [room]);
+            socket.emit('chat history', res.rows.reverse());
+        } catch (err) { console.error(err); }
     });
 
-    socket.on('chat message', (data) => {
+    socket.on('chat message', async (data) => {
         const room = socket.room || 'Global';
-        db.run("INSERT INTO messages (user, text, room) VALUES (?, ?, ?)", [data.user, data.text, room], function(err) {
-            if (err) return console.error(err.message);
-            io.to(room).emit('chat message', { ...data, id: this.lastID, timestamp: new Date().toISOString() }); 
-        });
+        try {
+            const res = await pool.query("INSERT INTO messages (sender, text, room) VALUES ($1, $2, $3) RETURNING id, timestamp", [data.user, data.text, room]);
+            io.to(room).emit('chat message', { ...data, id: res.rows[0].id, timestamp: res.rows[0].timestamp }); 
+        } catch (err) { console.error(err); }
     });
 
-    socket.on('send_image', (data) => {
+    socket.on('send_image', async (data) => {
         const room = socket.room || 'Global';
-        const imagePayload = `IMG_DATA:${data.image}`;
-        db.run("INSERT INTO messages (user, text, room) VALUES (?, ?, ?)", [data.user, imagePayload, room], function(err) {
-            if (err) return console.error(err.message);
-            io.to(room).emit('receive_image', { ...data, id: this.lastID, timestamp: new Date().toISOString() }); 
-        });
+        try {
+            const res = await pool.query("INSERT INTO messages (sender, text, room) VALUES ($1, $2, $3) RETURNING id, timestamp", [data.user, `IMG_DATA:${data.image}`, room]);
+            io.to(room).emit('receive_image', { ...data, id: res.rows[0].id, timestamp: res.rows[0].timestamp }); 
+        } catch (err) { console.error(err); }
     });
 
-    socket.on('send_video', (data) => {
+    socket.on('send_video', async (data) => {
         const room = socket.room || 'Global';
-        const videoPayload = 'VID_DATA:' + data.video;
-        db.run("INSERT INTO messages (user, text, room) VALUES (?, ?, ?)", [data.user, videoPayload, room], function(err) {
-            if (err) return console.error(err.message);
-            io.to(room).emit('receive_video', { ...data, id: this.lastID, timestamp: new Date().toISOString() }); 
-        });
+        try {
+            const res = await pool.query("INSERT INTO messages (sender, text, room) VALUES ($1, $2, $3) RETURNING id, timestamp", [data.user, `VID_DATA:${data.video}`, room]);
+            io.to(room).emit('receive_video', { ...data, id: res.rows[0].id, timestamp: res.rows[0].timestamp }); 
+        } catch (err) { console.error(err); }
     });
 
-    socket.on('delete_message', (id) => {
+    socket.on('delete_message', async (id) => {
         const room = socket.room || 'Global';
-        db.run("DELETE FROM messages WHERE id = ?", [id], function(err) {
-            if (!err) io.to(room).emit('message_deleted', id);
-        });
+        try {
+            await pool.query("DELETE FROM messages WHERE id = $1", [id]);
+            io.to(room).emit('message_deleted', id);
+        } catch (err) { console.error(err); }
     });
 
     socket.on('webrtc_offer', (event) => { socket.broadcast.to(socket.room || 'Global').emit('webrtc_offer', event); });
