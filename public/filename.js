@@ -11,7 +11,7 @@ if (!myRoom) {
     localStorage.setItem('mela_room', myRoom);
 }
 
-socket.emit('join room', myRoom);
+socket.emit('join room', { room: myRoom, user: myName });
 
 const originalEmit = socket.emit;
 socket.emit = function(eventName, data) {
@@ -208,3 +208,22 @@ logoutBtn.onclick = () => {
         window.location.reload();
     }
 };
+
+// 7. ONLINE USERS TRACKER UI
+const usersBar = document.createElement('div');
+usersBar.id = 'active-users-bar';
+usersBar.style.cssText = 'background: #182235; padding: 10px 20px; font-size: 0.9rem; color: var(--primary, #10b981); border-bottom: 1px solid #333; text-align: left; position: sticky; top: 0; z-index: 100; font-weight: bold; overflow-x: auto; white-space: nowrap; box-shadow: 0 4px 6px rgba(0,0,0,0.3); border-radius: 8px 8px 0 0; margin-bottom: 5px;';
+usersBar.innerHTML = '🟢 Online: Connecting...';
+
+// Safely insert the banner right above the chat messages
+if (chatWindow && chatWindow.parentNode) {
+    chatWindow.parentNode.insertBefore(usersBar, chatWindow);
+} else {
+    document.body.insertBefore(usersBar, document.body.firstChild);
+}
+
+// Listen for the server's live roster updates
+socket.on('room users', (users) => {
+    const uniqueUsers = [...new Set(users)]; // Filter out accidental duplicates
+    usersBar.innerHTML = '🟢 Online: <span style="color:white; font-weight:normal;">' + uniqueUsers.join(', ') + '</span>';
+});
