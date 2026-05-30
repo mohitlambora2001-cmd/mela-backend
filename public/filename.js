@@ -148,3 +148,58 @@ socket.on('webrtc_ice_candidate', async (candidate) => { if (peerConnection) awa
 // 8. LOGOUT BUTTON
 const logoutBtn = document.createElement('button'); logoutBtn.innerHTML = '🔄'; logoutBtn.style.cssText = 'position:fixed; top:190px; right:10px; background:#444; color:white; border:none; width:50px; height:50px; border-radius:50%; z-index:999; cursor:pointer; font-size:20px; box-shadow: 0px 4px 10px rgba(0,0,0,0.3);'; document.body.appendChild(logoutBtn);
 logoutBtn.onclick = () => { if(confirm("Log out and change rooms?")) { localStorage.removeItem('mela_username'); localStorage.removeItem('mela_room'); window.location.reload(); } };
+
+// 9. BACKGROUND NOTIFICATIONS 🔔
+let originalTitle = document.title || "Mela Hub";
+let unreadCount = 0;
+let flashInterval;
+
+// Create a synthetic "Ding!" without needing to download audio files
+function playNotificationSound() {
+    try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(800, ctx.currentTime); 
+        osc.frequency.exponentialRampToValueAtTime(300, ctx.currentTime + 0.5); 
+        
+        gain.gain.setValueAtTime(0.5, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+        
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.5);
+    } catch(e) {
+        console.log("Audio not supported or blocked");
+    }
+}
+
+// Intercept incoming messages to trigger notifications
+socket.on('chat message', (data) => {
+    // Only notify if we are NOT looking at the tab AND it's not our own message
+    if (document.hidden && data.user !== myName) {
+        unreadCount++;
+        playNotificationSound();
+        if (!flashInterval) {
+            flashInterval = setInterval(() => {
+                document.title = document.title === originalTitle ? `(${unreadCount}) New Message!` : originalTitle;
+            }, 1000);
+        }
+    }
+});
+
+// Clear notifications when you return to the app
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+        unreadCount = 0;
+        clearInterval(flashInterval);
+        flashInterval = null;
+        document.title = originalTitle;
+    }
+});
