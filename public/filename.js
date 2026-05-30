@@ -1,4 +1,4 @@
-// 1. LOCAL STORAGE ENGINE (Remember Me)
+// 1. LOCAL STORAGE ENGINE
 let myName = localStorage.getItem('mela_username');
 if (!myName) {
     myName = prompt("Welcome to Mela Hub! What is your name?") || "Anonymous";
@@ -24,38 +24,55 @@ socket.emit = function(eventName, data) {
 
 const chatWindow = document.getElementById('chat-box');
 
-// 2. THE UNIVERSAL CHAT PARSER
-function appendImageToChat(user, base64Str) {
+// 2. TIMESTAMP FORMATTER
+function formatTime(ts) {
+    if (!ts) return new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    let d = new Date(ts.replace(' ', 'T') + 'Z'); 
+    if (isNaN(d)) return new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    return d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+}
+
+// 3. THE UNIVERSAL CHAT PARSER (Now with Timestamps!)
+function appendImageToChat(user, base64Str, ts) {
     const item = document.createElement('div');
     item.style.marginBottom = "12px";
-    item.innerHTML = `<span style="color: var(--primary); font-weight: bold;">${user}:</span><br><img src="${base64Str}" style="max-width: 80%; max-height: 250px; border-radius: 8px; margin-top: 5px; border: 1px solid #444;" onclick="window.open(this.src)">`;
+    item.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:baseline;"><span style="color: var(--primary); font-weight: bold;">${user}:</span> <span style="font-size:0.7rem; color:#888;">${formatTime(ts)}</span></div><img src="${base64Str}" style="max-width: 80%; max-height: 250px; border-radius: 8px; margin-top: 5px; border: 1px solid #444;" onclick="window.open(this.src)">`;
     chatWindow.appendChild(item);
     chatWindow.scrollTop = chatWindow.scrollHeight;
 }
 
-function appendVideoToChat(user, base64Str) {
+function appendVideoToChat(user, base64Str, ts) {
     const item = document.createElement('div');
     item.style.marginBottom = "12px";
-    item.innerHTML = `<span style="color: var(--primary); font-weight: bold;">${user}:</span><br><video src="${base64Str}" controls style="max-width: 80%; max-height: 250px; border-radius: 8px; margin-top: 5px; border: 1px solid #444; background: #000;"></video>`;
+    item.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:baseline;"><span style="color: var(--primary); font-weight: bold;">${user}:</span> <span style="font-size:0.7rem; color:#888;">${formatTime(ts)}</span></div><video src="${base64Str}" controls style="max-width: 80%; max-height: 250px; border-radius: 8px; margin-top: 5px; border: 1px solid #444; background: #000;"></video>`;
     chatWindow.appendChild(item);
     chatWindow.scrollTop = chatWindow.scrollHeight;
 }
 
 function parseIncomingMessage(data) {
     if (data.text.startsWith('IMG_DATA:')) {
-        appendImageToChat(data.user, data.text.replace('IMG_DATA:', ''));
+        appendImageToChat(data.user, data.text.replace('IMG_DATA:', ''), data.timestamp);
     } else if (data.text.startsWith('VID_DATA:')) {
-        appendVideoToChat(data.user, data.text.replace('VID_DATA:', ''));
+        appendVideoToChat(data.user, data.text.replace('VID_DATA:', ''), data.timestamp);
     } else {
         const item = document.createElement('div');
-        item.innerHTML = `<span style="color: var(--primary); font-weight: bold;">${data.user}:</span> <span style="color: white;">${data.text}</span>`;
+        item.style.marginBottom = "8px";
+        item.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:baseline;"><span style="color: var(--primary); font-weight: bold;">${data.user}:</span> <span style="font-size:0.7rem; color:#888;">${formatTime(data.timestamp)}</span></div><div style="color: white; margin-top:2px;">${data.text}</div>`;
         chatWindow.appendChild(item);
     }
 }
 
 socket.on('chat message', (data) => { if (chatWindow) { parseIncomingMessage(data); chatWindow.scrollTop = chatWindow.scrollHeight; } });
-socket.on('receive_image', (data) => { if (chatWindow) appendImageToChat(data.user, data.image); });
-socket.on('receive_video', (data) => { if (chatWindow) appendVideoToChat(data.user, data.video); });
+socket.on('receive_image', (data) => { if (chatWindow) appendImageToChat(data.user, data.image, null); });
+socket.on('receive_video', (data) => { if (chatWindow) appendVideoToChat(data.user, data.video, null); });
+socket.on('receive_audio', (data) => {
+    if (!chatWindow) return;
+    const item = document.createElement('div');
+    item.style.marginBottom = "10px";
+    item.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:baseline;"><span style="color: var(--primary); font-weight: bold;">${data.user} sent a voice note:</span> <span style="font-size:0.7rem; color:#888;">${formatTime(null)}</span></div><audio controls src="${data.audio}" style="margin-top: 5px; height: 40px; max-width: 100%; border-radius: 20px;"></audio>`;
+    chatWindow.appendChild(item);
+    chatWindow.scrollTop = chatWindow.scrollHeight;
+});
 
 socket.on('chat history', (history) => {
     if (!chatWindow) return;
@@ -64,7 +81,7 @@ socket.on('chat history', (history) => {
     chatWindow.scrollTop = chatWindow.scrollHeight;
 });
 
-// 3. MEDIA UPLOADERS (Images, Video, Audio)
+// 4. MEDIA UPLOADERS & TYPING
 setTimeout(() => {
     const imgInput = document.getElementById('imageInput');
     if (imgInput) {
@@ -93,23 +110,11 @@ videoBtn.onclick = () => videoInput.click();
 videoInput.onchange = function(e) {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-        alert("Whoa there! Please select a video under 5MB.");
-        return;
-    }
+    if (file.size > 5 * 1024 * 1024) { alert("Video must be under 5MB."); return; }
     const reader = new FileReader();
     reader.onload = function(event) { socket.emit('send_video', { user: myName, video: event.target.result }); };
     reader.readAsDataURL(file);
 };
-
-socket.on('receive_audio', (data) => {
-    if (!chatWindow) return;
-    const item = document.createElement('div');
-    item.style.marginBottom = "10px";
-    item.innerHTML = `<span style="color: var(--primary); font-weight: bold;">${data.user} sent a voice note:</span><br><audio controls src="${data.audio}" style="margin-top: 5px; height: 40px; max-width: 100%; border-radius: 20px;"></audio>`;
-    chatWindow.appendChild(item);
-    chatWindow.scrollTop = chatWindow.scrollHeight;
-});
 
 socket.on('typing', (isTyping) => {
     if (!chatWindow) return;
@@ -128,7 +133,7 @@ socket.on('typing', (isTyping) => {
     }
 });
 
-// 4. WEBRTC VIDEO CALLING LOGIC
+// 5. WEBRTC VIDEO CALLING LOGIC
 const videoContainer = document.createElement('div');
 videoContainer.innerHTML = `
     <div id="video-ui" style="display:none; position:fixed; top:70px; right:10px; width:150px; background:#000; border-radius:12px; overflow:hidden; z-index:1000; border:2px solid var(--primary); box-shadow: 0px 4px 10px rgba(0,0,0,0.5);">
@@ -190,7 +195,7 @@ socket.on('webrtc_offer', async (offer) => {
 socket.on('webrtc_answer', async (answer) => { await peerConnection.setRemoteDescription(new RTCSessionDescription(answer)); });
 socket.on('webrtc_ice_candidate', async (candidate) => { if (peerConnection) await peerConnection.addIceCandidate(new RTCIceCandidate(candidate)); });
 
-// 5. CHANGE ROOM / LOGOUT BUTTON
+// 6. LOGOUT BUTTON
 const logoutBtn = document.createElement('button');
 logoutBtn.innerHTML = '🔄';
 logoutBtn.style.cssText = 'position:fixed; top:190px; right:10px; background:#444; color:white; border:none; width:50px; height:50px; border-radius:50%; z-index:999; cursor:pointer; font-size:20px; box-shadow: 0px 4px 10px rgba(0,0,0,0.3);';

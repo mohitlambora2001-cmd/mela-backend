@@ -21,7 +21,7 @@ io.on('connection', (socket) => {
         socket.room = room; // Save the room name to this user's socket
         
         // 2. Fetch history ONLY for this secret room
-        db.all("SELECT user, text FROM messages WHERE room = ? ORDER BY id DESC LIMIT 50", [room], (err, rows) => {
+        db.all("SELECT user, text, timestamp FROM messages WHERE room = ? ORDER BY id DESC LIMIT 50", [room], (err, rows) => {
             if (err) return console.error(err.message);
             socket.emit('chat history', rows.reverse());
         });
