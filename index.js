@@ -78,6 +78,7 @@ const roomUsers = {};
 
 io.on('connection', (socket) => {
     socket.on('chat_message', (msg) => io.emit('chat_message', msg));
+    socket.on('typing', (user) => socket.broadcast.emit('typing', user));
     socket.on('disconnect', () => io.emit('update_online_count', io.engine.clientsCount));
     console.log('User connected:', socket.id);
 

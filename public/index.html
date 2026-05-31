@@ -33,7 +33,8 @@
       <button id="logout-btn" class="text-sm bg-red-600/20 hover:bg-red-600/40 text-red-400 px-4 py-2 rounded-lg border border-red-500/30 transition">Logout</button>
     </header>
 
-    <div id="messages" class="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-950"></div>
+    <p id='typing-indicator' class='text-xs text-emerald-500 italic hidden ml-2'>Someone is typing...</p>
+  <div id="messages" class="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-950"></div>
 
     <div class="p-4 bg-gray-800 border-t border-gray-700 flex items-center gap-2">
       <input id="message-input" type="text" placeholder="Type a secure message..." class="flex-1 p-3 rounded-xl bg-gray-900 border border-gray-700 focus:outline-none focus:border-emerald-500 text-white">
@@ -130,6 +131,10 @@
     messageInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') sendMessage();
     });
+
+    const typingIndicator = document.getElementById('typing-indicator');
+    messageInput.addEventListener('keypress', () => socket.emit('typing', currentUser));
+    socket.on('typing', (user) => { typingIndicator.classList.remove('hidden'); setTimeout(() => typingIndicator.classList.add('hidden'), 2000); });
 
     socket.on('chat_message', (data) => {
       appendMessage(data);
