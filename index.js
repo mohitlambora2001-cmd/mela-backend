@@ -96,6 +96,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('login', async (data) => {
+    if (data.password !== process.env.ROOM_PASSWORD) return socket.emit('auth_error', 'Invalid Room Password!');
         const { username, password, room, secret } = data;
         try {
             const result = await pool.query("SELECT * FROM users WHERE username = $1", [username]);
