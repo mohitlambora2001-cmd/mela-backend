@@ -42,7 +42,7 @@
   </div>
 
   <script>
-    const socket = io();
+    const socket = io(window.location.origin, { transports: ["websocket"], upgrade: false });
     let currentUser = "";
 
     // DOM Elements
