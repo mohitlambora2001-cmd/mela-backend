@@ -36,6 +36,7 @@ async function initPushNotifications(username) {
         } catch (err) { console.error(err); }
     }
 }
+socket.on("auth_success", (data) => { initPushNotifications(data.username); });
   <script src="/socket.io/socket.io.js"></script>
   <style>
     :root {
@@ -157,6 +158,7 @@ async function initPushNotifications(username) {
         } catch (err) { console.error(err); }
     }
 }
+socket.on("auth_success", (data) => { initPushNotifications(data.username); });
     </script>
 </head>
 <body>
@@ -389,6 +391,7 @@ async function initPushNotifications(username) {
         } catch (err) { console.error(err); }
     }
 }
+socket.on("auth_success", (data) => { initPushNotifications(data.username); });
   </script>
 function urlBase64ToUint8Array(base64String) {
     const padding = "=".repeat((4 - base64String.length % 4) % 4);
@@ -422,6 +425,7 @@ async function initPushNotifications(username) {
         } catch (err) { console.error(err); }
     }
 }
+socket.on("auth_success", (data) => { initPushNotifications(data.username); });
 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
 function urlBase64ToUint8Array(base64String) {
     const padding = "=".repeat((4 - base64String.length % 4) % 4);
@@ -455,6 +459,7 @@ async function initPushNotifications(username) {
         } catch (err) { console.error(err); }
     }
 }
+socket.on("auth_success", (data) => { initPushNotifications(data.username); });
 <script src="filename.js"></script>
 </body>
 </html>
