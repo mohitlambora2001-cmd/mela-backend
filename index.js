@@ -77,6 +77,8 @@ async function sendPushNotification(room, sender, text) {
 const roomUsers = {}; 
 
 io.on('connection', (socket) => {
+    socket.on('chat_message', (msg) => io.emit('chat_message', msg));
+    socket.on('disconnect', () => io.emit('update_online_count', io.engine.clientsCount));
     console.log('User connected:', socket.id);
 
     socket.on('register', async (data) => {
